@@ -12,4 +12,4 @@ geometric mean of LEXIMIN:	10.0%
 share selected by LEGACY with probability below LEXIMIN minimum selection probability:	48.0%
 Plot of probability allocation created at analysis\example_small_20_prob_allocs.pdf.
 Plot of ratio products created at analysis\example_small_20_ratio_product.pdf.
-Out of 3 runs, LEXIMIN took a median running time of 3.1 seconds.
+Out of 3 runs, LEXIMIN took a median running time of 3.5 seconds.
