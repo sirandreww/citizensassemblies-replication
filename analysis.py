@@ -1,6 +1,12 @@
 # coding: utf-8
 # Copyright (C) 2021 Paul Gölz and Bailey Flanigan
 
+"""
+***********************************************************************************************************************
+    imports
+***********************************************************************************************************************
+"""
+
 import csv
 import operator
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
@@ -25,11 +31,23 @@ from scipy.stats.mstats import gmean
 from legacy import find_random_sample_legacy, SelectionError, check_min_cats
 from leximin import find_distribution_leximin
 
+"""
+***********************************************************************************************************************
+    globals
+***********************************************************************************************************************
+"""
+
 AgentId = NewType("AgentId", Any)  # type of agent identifier
 FeatureCategory = NewType("FeatureCategory", str)  # type for category of features such as "gender"
 Feature = NewType("Feature", str)  # type for features within a category such as "female"
 FeatureInfo = NewType("FeatureInfo", Dict[str, int])  # information about a feature, including quotas "min" and "max"
 ProbAllocation = NewType("ProbAllocation", Dict[AgentId, float])  # type for probability allocations
+
+"""
+***********************************************************************************************************************
+    classes that house the problem details and statistics
+***********************************************************************************************************************
+"""
 
 
 @dataclass
@@ -37,6 +55,20 @@ class Instance:
     k: int
     categories: Dict[FeatureCategory, Dict[Feature, FeatureInfo]]
     agents: Dict[AgentId, Dict[FeatureCategory, Feature]]
+
+
+@dataclass
+class ProbAllocationStats:
+    gini: float
+    geometric_mean: float
+    min: float
+
+
+"""
+***********************************************************************************************************************
+    helper functions 
+***********************************************************************************************************************
+"""
 
 
 def read_instance(feature_file: Union[str, Path], pool_file: Union[str, Path], k: int) -> Instance:
@@ -128,13 +160,6 @@ def leximin_probabilities(instance: Instance) -> ProbAllocation:
         for agent_id in panel:
             selection_probs[agent_id] += probability
     return ProbAllocation(selection_probs)
-
-
-@dataclass
-class ProbAllocationStats:
-    gini: float
-    geometric_mean: float
-    min: float
 
 
 def compute_prob_allocation_stats(alloc: ProbAllocation, cap_for_geometric_mean: bool) -> ProbAllocationStats:
@@ -402,7 +427,7 @@ def plot_intersectional_representation(instance_name: str, instance: Instance, l
     for share1, share2 in diff_pairs:
         diff_name = share1 + " - " + share2
         df[diff_name] = df[share1] - df[share2]
-        errors[(share1, share2)] = (df[diff_name]**2).mean()
+        errors[(share1, share2)] = (df[diff_name] ** 2).mean()
 
     sns.set_style("whitegrid")
     scale = max(df["panel share LEXIMIN - population share"].abs().max(),
@@ -493,7 +518,14 @@ def analyze_instance(instance_name: str, instance: Instance, skip_timing: bool =
     analysis_log.close()
 
 
-if __name__ == '__main__':
+"""
+***********************************************************************************************************************
+    main function to avoid global variables
+***********************************************************************************************************************
+"""
+
+
+def main():
     valid_inputs = []
     errors = []
     for subdir in sorted(Path("data").iterdir()):
@@ -553,3 +585,13 @@ if __name__ == '__main__':
         input_directory = Path("data", f"{instance_name}_{k}")
         instance = read_instance(input_directory / "categories.csv", input_directory / "respondents.csv", k)
         analyze_instance(instance_name, instance, skip_timing)
+
+
+"""
+***********************************************************************************************************************
+    protected call to main
+***********************************************************************************************************************
+"""
+
+if __name__ == '__main__':
+    main()

@@ -4,7 +4,12 @@
 # The file has been adapted by removing methods and dependencies that are not needed to run the experiments.
 # Original file written by Brett Hennig bsh [AT] sortitionfoundation.org and Paul Gölz pgoelz (AT) cs.cmu.edu
 
-import random
+"""
+***********************************************************************************************************************
+    imports
+***********************************************************************************************************************
+"""
+
 import typing
 from typing import Dict, List, Tuple, FrozenSet, Iterable, Optional, Set
 
@@ -13,10 +18,23 @@ import mip
 import numpy as np
 from legacy import SelectionError
 
+"""
+***********************************************************************************************************************
+    globals
+***********************************************************************************************************************
+"""
+
 # 0 means no debug message, higher number (could) mean more messages
 debug = 0
 # numerical deviation accepted as equality when dealing with solvers
 EPS = 0.0005
+
+
+"""
+***********************************************************************************************************************
+    helper functions 
+***********************************************************************************************************************
+"""
 
 
 def _ilp_results_to_committee(variables: Dict[str, mip.entities.Var]) -> FrozenSet[str]:
@@ -308,6 +326,13 @@ def _dual_leximin_stage(people: Dict[str, Dict[str, str]], committees: Set[Froze
     model.setParam("Crossover", 0)  # deactivate cross-over
 
     return model, agent_vars, cap_var
+
+
+"""
+***********************************************************************************************************************
+    Function to get panel distribution
+***********************************************************************************************************************
+"""
 
 
 def find_distribution_leximin(categories: Dict[str, Dict[str, Dict[str, int]]], people: Dict[str, Dict[str, str]],

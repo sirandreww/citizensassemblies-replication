@@ -4,24 +4,43 @@
 # The file has been adapted by removing methods and dependencies that are not needed to run the experiments.
 # Original file written by Brett Hennig bsh [AT] sortitionfoundation.org and Paul Gölz pgoelz (AT) cs.cmu.edu
 
-import random
-import typing
-from typing import Dict, List, Tuple, FrozenSet, Iterable, Optional, Set
+"""
+***********************************************************************************************************************
+    imports
+***********************************************************************************************************************
+"""
 
-import gurobipy as grb
-import mip
-import numpy as np
+import random
+from typing import Dict, List, Tuple
+
+
+"""
+***********************************************************************************************************************
+    globals
+***********************************************************************************************************************
+"""
 
 # 0 means no debug message, higher number (could) mean more messages
 debug = 0
-# numerical deviation accepted as equality when dealing with solvers
-EPS = 0.0005
+
+"""
+***********************************************************************************************************************
+    class that houses Error of no panel found
+***********************************************************************************************************************
+"""
 
 
 # class for throwing error/fail exceptions
 class SelectionError(Exception):
     def __init__(self, message):
         self.msg = message
+
+
+"""
+***********************************************************************************************************************
+    helper functions 
+***********************************************************************************************************************
+"""
 
 
 # when a category is full we want to delete everyone in it
@@ -147,6 +166,13 @@ def check_min_cats(categories):
                 got_min = False
                 output_msg = ["Failed to get minimum in category: {}".format(cat)]
     return got_min, output_msg
+
+
+"""
+***********************************************************************************************************************
+    Function to get panel.
+***********************************************************************************************************************
+"""
 
 
 def find_random_sample_legacy(categories: Dict[str, Dict[str, Dict[str, int]]], people: Dict[str, Dict[str, str]],
