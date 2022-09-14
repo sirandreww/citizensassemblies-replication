@@ -12,7 +12,7 @@ incorporated into this repository. For use in citizens’ assemblies, we recomme
 [Stratification App](https://github.com/sortitionfoundation/stratification-app/) maintained by the Sortition Foundation.
 
 This directory contains two scripts:
-- [stratification.py](stratification.py) contains implementations of both selection algorithms. This file is taken from
+- [stratification.py](legacy.py) contains implementations of both selection algorithms. This file is taken from
   the stratification-app developed by the Sortition Foundation (methods and dependencies not necessary for the
   experiments have been removed).
 - [analysis.py](analysis.py) allows to analyze a sampling instance (consisting of a file specifying features and quotas

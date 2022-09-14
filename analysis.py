@@ -22,7 +22,8 @@ import seaborn as sns
 from matplotlib import patches
 from scipy.stats import beta
 from scipy.stats.mstats import gmean
-from stratification import find_random_sample_legacy, SelectionError, check_min_cats, find_distribution_leximin
+from legacy import find_random_sample_legacy, SelectionError, check_min_cats
+from leximin import find_distribution_leximin
 
 AgentId = NewType("AgentId", Any)  # type of agent identifier
 FeatureCategory = NewType("FeatureCategory", str)  # type for category of features such as "gender"
