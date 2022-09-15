@@ -1,0 +1,9 @@
+category,feature,min,max
+gender,female,5,10
+gender,non-binary,2,4
+gender,male,5,10
+politics,right,2,3
+politics,left,1,5
+politics,center,2,3
+education,higher education,2,3
+education,no higher education,5,10
