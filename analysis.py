@@ -64,6 +64,39 @@ class ProbAllocationStats:
     min: float
 
 
+class PairHistogram:
+    def __init__(self, number_of_agents, uniform_distribution=False):
+        self.pair_histogram = {(i, j): 0 for i in range(number_of_agents) for j in range(i+1, number_of_agents)}
+        if uniform_distribution:
+            uni_prob = 1 / len(self.pair_histogram)
+            for key in self.pair_histogram.keys():
+                self.pair_histogram[key] = uni_prob
+
+    def __getitem__(self, key: Tuple[int, int]):
+        key = list(key)
+        key.sort()
+        return self.pair_histogram[tuple(key)]
+
+    def __setitem__(self, key: Tuple[int, int], value:int):
+        key = list(key)
+        key.sort()
+        self.pair_histogram[tuple(key)] = value
+
+    def turn_into_probabilities_by_dividing_all_elements_by_given_number(self, num):
+        for key in self.pair_histogram.keys():
+            self.pair_histogram[key] = self.pair_histogram[key] / num
+
+    def add_portfolio_of_panels_to_histogram(self, portfolio, probabilities):
+        for panel, pob in zip(portfolio, probabilities):
+            panel = list(panel)
+            for i in range(len(panel)):
+                for j in range(i + 1, len(panel)):
+                    self[(panel[i], panel[j])] += pob
+
+    def get_dict(self):
+        return self.pair_histogram
+
+
 """
 ***********************************************************************************************************************
     helper functions 
@@ -125,7 +158,7 @@ def legacy_find(feature_info: Dict[FeatureCategory, Dict[Feature, FeatureInfo]],
             print("Rejected ", people_selected)
 
 
-def legacy_probabilities(instance: Instance, iterations: int, random_seed: int) -> tuple[ProbAllocation, set]:
+def legacy_probabilities(instance: Instance, iterations: int, random_seed: int) -> tuple[ProbAllocation, set, PairHistogram]:
     """Estimate the probability allocation for LEGACY by drawing `iterations` many random panels in a row."""
 
     categories = instance.categories
@@ -135,6 +168,7 @@ def legacy_probabilities(instance: Instance, iterations: int, random_seed: int) 
     seed(random_seed)
     np.random.seed(random_seed)
     found_panels = set()
+    pair_histogram = PairHistogram(len(agents))
 
     for category in categories:
         assert sum(fv_info["min"] for fv_info in categories[category].values()) <= k
@@ -147,27 +181,32 @@ def legacy_probabilities(instance: Instance, iterations: int, random_seed: int) 
             print(f"Running iteration {i + 1} out of {iterations}.")
         panel = legacy_find(categories, agents, k)
         panel.sort()
+        pair_histogram.add_portfolio_of_panels_to_histogram([panel], [1])
         found_panels.add(tuple(panel))
         agent_appearance_counter.update(panel)
+    pair_histogram.turn_into_probabilities_by_dividing_all_elements_by_given_number(iterations)
     return ProbAllocation(
         {agent_id: agent_appearance_counter[agent_id] / iterations for agent_id in agents}
-    ), found_panels
+    ), found_panels, pair_histogram
 
 
-def leximin_probabilities(instance: Instance) -> Tuple[ProbAllocation, set]:
+def leximin_probabilities(instance: Instance) -> Tuple[ProbAllocation, set, PairHistogram]:
     """Compute the exact probability allocation for LEXIMIN."""
 
     categories = instance.categories
     agents = instance.agents
     k = instance.k
     columns_data = {agent_id: {} for agent_id in agents}
+    pair_histogram = PairHistogram(len(agents))
 
     portfolio, output_probs, output_lines = find_distribution_leximin(categories, agents, columns_data, k, False, [])
     selection_probs = {agent_id: 0. for agent_id in agents}
     for panel, probability in zip(portfolio, output_probs):
         for agent_id in panel:
             selection_probs[agent_id] += probability
-    return ProbAllocation(selection_probs), set(tuple(port) for port in portfolio)
+    pair_histogram.add_portfolio_of_panels_to_histogram(portfolio=portfolio, probabilities=output_probs)
+
+    return ProbAllocation(selection_probs), set(tuple(port) for port in portfolio), pair_histogram
 
 
 def compute_prob_allocation_stats(alloc: ProbAllocation, cap_for_geometric_mean: bool) -> ProbAllocationStats:
@@ -210,7 +249,7 @@ def upper_confidence_bound(num_trials: int, sample_proportion: float) -> float:
         return beta.ppf(.99, .5 + num_successes, .5 + num_failures)
 
 
-def run_legacy_or_retrieve(instance_name: str, instance: Instance, resample: bool) -> Tuple[ProbAllocation, set]:
+def run_legacy_or_retrieve(instance_name: str, instance: Instance, resample: bool) -> Tuple[ProbAllocation, set, PairHistogram]:
     """Run the LEGACY algorithm or, if it has been run before, look up the result from disk. By setting `resample` to
     True, a second sample is taken with a different random seed.
     """
@@ -223,31 +262,57 @@ def run_legacy_or_retrieve(instance_name: str, instance: Instance, resample: boo
 
     if allocation_file.exists():
         with open(allocation_file, "rb") as file:
-            (alloc, found_panels) = load(file)
+            (alloc, found_panels, pair_histogram) = load(file)
     else:
-        alloc, found_panels = legacy_probabilities(instance, 10000, random_seed=random_seed)
+        alloc, found_panels, pair_histogram = legacy_probabilities(instance, 10000, random_seed=random_seed)
         with open(allocation_file, "wb") as file:
-            dump((alloc, found_panels), file)
+            dump((alloc, found_panels, pair_histogram), file)
 
     assert len(alloc) == len(instance.agents)
-    return alloc, found_panels
+    return alloc, found_panels, pair_histogram
 
 
-def run_leximin_or_retrieve(instance_name: str, instance: Instance) -> Tuple[ProbAllocation, set]:
+def run_leximin_or_retrieve(instance_name: str, instance: Instance) -> Tuple[ProbAllocation, set, PairHistogram]:
     """Run the LEXIMIN algorithm or, if it has been run before, look up the result from disk."""
 
     allocation_file = Path("distributions", f"{instance_name}_{instance.k}_leximin.pickle")
 
     if allocation_file.exists():
         with open(allocation_file, "rb") as file:
-            (alloc, found_panels) = load(file)
+            (alloc, found_panels, pair_histogram) = load(file)
     else:
-        alloc, found_panels = leximin_probabilities(instance)
+        alloc, found_panels, pair_histogram = leximin_probabilities(instance)
         with open(allocation_file, "wb") as file:
-            dump((alloc, found_panels), file)
+            dump((alloc, found_panels, pair_histogram), file)
 
     assert len(alloc) == len(instance.agents)
-    return alloc, found_panels
+    return alloc, found_panels, pair_histogram
+
+
+def plot_pair_probability_distribution_per_algorithm(instance_name: str, instance: Instance, algo_to_pair_hist):
+    n = (len(instance.agents) * (len(instance.agents) - 1) // 2)
+    x = list(range(n))
+
+    fig, ax = plt.subplots()
+    ax.set_title(f"Probability allocation of pair on instance {instance_name}", fontsize=8)
+    ax.set_xlabel('pairs sorted by probability')
+    ax.set_ylabel('probability of pair')
+
+    for algorithm, histogram in algo_to_pair_hist.items():
+        # Go through agents in order of increasing selection probability
+        histogram = list(histogram.get_dict().values())
+        histogram.sort()
+        assert len(histogram) == len(x)
+        if algorithm == "uniform":
+            ax.plot(x, histogram, label=algorithm, dashes=[2, 2])
+        else:
+            ax.plot(x, histogram, label=algorithm)
+
+    ax.legend()
+    output_directory = Path("analysis")
+    plot_path = output_directory / f"{instance_name}_{instance.k}_pair_probability_graph.pdf"
+    fig.savefig(plot_path)
+    return plot_path
 
 
 def plot_number_of_panels_per_algorithm(instance_name: str, instance: Instance, algo_to_num_panels) -> Path:
@@ -479,9 +544,13 @@ def plot_intersectional_representation(instance_name: str, instance: Instance, l
 def analyze_instance(instance_name: str, instance: Instance, skip_timing: bool = False):
     """Run a full analysis of LEGACY and LEXIMIN on a given instance."""
 
-    legacy_alloc_first_sample, unique_panels_legacy_1 = run_legacy_or_retrieve(instance_name, instance, False)
-    legacy_alloc_second_sample, unique_panels_legacy_2 = run_legacy_or_retrieve(instance_name, instance, True)
-    leximin_alloc, unique_panels_leximin = run_leximin_or_retrieve(instance_name, instance)
+    legacy_alloc_first_sample, unique_panels_legacy_1, pair_histogram_legacy_1 = run_legacy_or_retrieve(
+        instance_name, instance, False
+    )
+    legacy_alloc_second_sample, unique_panels_legacy_2, pair_histogram_legacy_2 = run_legacy_or_retrieve(
+        instance_name, instance, True
+    )
+    leximin_alloc, unique_panels_leximin, pair_histogram_leximin = run_leximin_or_retrieve(instance_name, instance)
 
     k = instance.k
     n = len(instance.agents)
@@ -516,6 +585,11 @@ def analyze_instance(instance_name: str, instance: Instance, skip_timing: bool =
     plot_number_of_panels_per_algorithm(instance_name=instance_name, instance=instance, algo_to_num_panels={
         "leximin": len(unique_panels_leximin),
         "legacy": len(unique_panels_legacy_2)
+    })
+    plot_pair_probability_distribution_per_algorithm(instance_name=instance_name, instance=instance, algo_to_pair_hist={
+        "leximin": pair_histogram_leximin,
+        "legacy": pair_histogram_legacy_2,
+        "uniform": PairHistogram(len(instance.agents), uniform_distribution=True)
     })
 
     log("gini coefficient of LEGACY:", f"{legacy_stats.gini:.1%}")
