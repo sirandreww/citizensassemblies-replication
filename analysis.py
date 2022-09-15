@@ -378,81 +378,32 @@ def plot_number_of_panels_per_algorithm(instance_name: str, instance: Instance, 
     return plot_path
 
 
-def plot_probability_allocations(instance_name: str, instance: Instance, legacy_alloc: ProbAllocation,
-                                 leximin_alloc: ProbAllocation, leximin_min: float, share_below_leximin_min: float) \
-        -> Path:
+def plot_probability_allocations(instance_name, instance, algo_to_alloc) -> Path:
     """Produce line graph comparing the probability allocations of different algorithms on the same instance.
     For each algorithm, the selection probabilities are sorted in order of increasing selection probability.
     Plot is created at ./analysis/[instance_name]_[k]_prob_allocs.pdf and a table with raw data for the plot is created
     at ./analysis/[instance_name]_[k]_prob_allocs_data.csv . Returns the plath to the plot.
     """
-    agents = instance.agents
-    n = len(agents)
-    k = instance.k
+    x = list(range(len(instance.agents)))
 
-    # fictitious probability allocation where each agent receives equal probability k/n
-    equalized_alloc = {agent_id: k / n for agent_id in agents}
+    fig, ax = plt.subplots()
+    ax.set_title(f"Probability allocation of each agent on instance {instance_name}", fontsize=8)
+    ax.set_xlabel('agents sorted by probability')
+    ax.set_ylabel('probability of agent to be on panel')
 
-    data = []
-    plot_data = []
-    for algorithm, alloc in [("Legacy", legacy_alloc), ("LexiMin", leximin_alloc), ("k/n", equalized_alloc)]:
+    for algorithm, alloc in algo_to_alloc.items():
         # Go through agents in order of increasing selection probability
-        sorted_agents = sorted(agents, key=lambda agent_id: alloc[agent_id])
-        for i, agent_id in enumerate(sorted_agents):
-            data.append({"algorithm": algorithm, "percentile of pool members": i / n * 100,
-                         "selection probability": alloc[agent_id]})
-            if i == n - 1:  # needed to draw the last step
-                plot_data.append({"algorithm": algorithm, "percentile of pool members": 100,
-                                  "selection probability": alloc[agent_id]})
+        alloc = list(alloc.values())
+        alloc.sort()
+        assert len(alloc) == len(x)
+        if algorithm == "uniform":
+            ax.plot(x, alloc, label=algorithm, dashes=[2, 2])
+        else:
+            ax.plot(x, alloc, label=algorithm)
 
+    ax.legend()
     output_directory = Path("analysis")
-    df = pd.DataFrame(data)
-    df.to_csv(output_directory / f"{instance_name}_{k}_prob_allocs_data.csv", index=False)
-    df = pd.DataFrame(data + plot_data)
-
-    max_percentile = 100
-    restricted_df = df[df['percentile of pool members'] <= max_percentile]
-    fig = sns.relplot(data=restricted_df, x="percentile of pool members",
-                      y='selection probability', hue="algorithm", hue_order=("Legacy", "LexiMin", "k/n"), kind="line",
-                      drawstyle='steps-post', height=6, aspect=1.8, legend=False)
-    fig.set_axis_labels("percentile of pool members (by selection probability)", "selection probability")
-
-    plt.xlim(left=0.0, right=max_percentile)
-    plt.ylim(bottom=0.0)
-
-    # confidence intervals for LEGACY probability allocation
-    ax = fig.ax
-    restricted_df = restricted_df[restricted_df["algorithm"] == "Legacy"]
-    restricted_df.sort_values(by="percentile of pool members", inplace=True)
-    times_selected = (10000 * restricted_df["selection probability"]).round()
-    # 99% Jeffreys intervals, i.e., the 0.5th and the 99.5th quantile of Beta(1/2 + successes, 1/2 + failures), with
-    # exceptions when the number of successes or failures is 0:
-    # Brown, L. D., Cai, T. T. & DasGupta, A. Interval estimation for a binomial proportion. Statistical science 16,
-    # 101–117 (2001).
-    lower = beta.ppf(.005, .5 + times_selected, .5 + (10000 - times_selected))
-    lower = np.where(times_selected == 0, 0., lower)
-    upper = beta.ppf(.995, .5 + times_selected, .5 + (10000 - times_selected))
-    upper = np.where(times_selected == 10000, 1., upper)
-    ax.fill_between(restricted_df["percentile of pool members"], lower, upper,
-                    alpha=0.25, edgecolor='none', facecolor="#2077B4", step="post")
-
-    plt.legend((ax.lines[0], fig.ax.lines[1]), ('LEGACY', 'LEXIMIN'), fontsize=12)
-
-    ax.lines[2].set_linestyle("dotted")
-    ax.lines[2].set_color("g")
-    ax.set_xlim(left=0.)
-    ax.set_ylim(bottom=0)
-
-    # equalized probability label, minimum probability line, and rectangle
-    ax.text(1, 1.03 * k / n, 'equalized probability (k/n)', color='g')
-    ax.axhline(y=leximin_min, xmin=0, xmax=max_percentile, linestyle='--', color='black', linewidth=0.5)
-    rect = patches.Rectangle((0, 0), share_below_leximin_min * 100, leximin_min, edgecolor='none', facecolor="black",
-                             alpha=0.1)
-    ax.add_patch(rect)
-
-    ax.set_title(f"Probability allocations on instance {instance_name}")
-
-    plot_path = output_directory / f"{instance_name}_{k}_prob_allocs.pdf"
+    plot_path = output_directory / f"{instance_name}_{instance.k}_prob_allocs_data.pdf"
     fig.savefig(plot_path)
     return plot_path
 
@@ -627,15 +578,16 @@ def analyze_instance(instance_name: str, instance: Instance, skip_timing: bool =
     plot_number_of_panels_per_algorithm(instance_name=instance_name, instance=instance, algo_to_num_panels={
         "leximin": len(unique_panels_leximin),
         "legacy": len(unique_panels_legacy_2),
-        # "xmin": len(unique_panels_xmin)
+        "xmin": len(unique_panels_xmin)
     })
     plot_pair_probability_distribution_per_algorithm(instance_name=instance_name, instance=instance, algo_to_pair_hist={
         "leximin": pair_histogram_leximin,
         "legacy": pair_histogram_legacy_2,
-        # "xmin": pair_histogram_xmin,
+        "xmin": pair_histogram_xmin,
         # "legacy1": pair_histogram_legacy_1,
         "uniform": PairHistogram(len(instance.agents), uniform_distribution=True)
     })
+
     log("********************************************************************************")
     log("gini coefficient of LEGACY:", f"{legacy_stats.gini:.1%}")
     log("gini coefficient of LEXIMIN:", f"{leximin_stats.gini:.1%}")
@@ -649,8 +601,11 @@ def analyze_instance(instance_name: str, instance: Instance, skip_timing: bool =
     log("share selected by LEGACY with probability below LEXIMIN minimum selection probability:",
         f"{share_below_leximin_min:.1%}")
 
-    prob_alloc_plot_path = plot_probability_allocations(instance_name, instance, legacy_alloc_first_sample,
-                                                        leximin_alloc, leximin_stats.min, share_below_leximin_min)
+    prob_alloc_plot_path = plot_probability_allocations(instance_name=instance_name, instance=instance, algo_to_alloc={
+            "leximin": leximin_alloc,
+            "legacy": legacy_alloc_second_sample,
+            "xmin": xmin_alloc,
+        })
     log(f"Plot of probability allocation created at {prob_alloc_plot_path}.")
 
     ratio_products = compute_ratio_products(instance)

@@ -21,6 +21,6 @@ geometric mean of LEXIMIN:	10.0%
 geometric mean of XMIN:	10.0%
 ********************************************************************************
 share selected by LEGACY with probability below LEXIMIN minimum selection probability:	50.0%
-Plot of probability allocation created at analysis\couples_panel_from_twenty_people_no_constraints_2_prob_allocs.pdf.
+Plot of probability allocation created at analysis\couples_panel_from_twenty_people_no_constraints_2_prob_allocs_data.pdf.
 Plot of ratio products created at analysis\couples_panel_from_twenty_people_no_constraints_2_ratio_product.pdf.
 Skip timing.

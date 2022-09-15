@@ -508,7 +508,7 @@ def find_distribution_xmin(categories: Dict[str, Dict[str, Dict[str, int]]], peo
     )
 
     # try and expand the portfolio
-    number_of_iterations = len(agents) * (len(agents) - 1) // 2
+    number_of_iterations = len(agents) ** 2
     for i in range(number_of_iterations):
         new_panel = _get_panel_not_in_portfolio_if_possible(
             categories=categories, agents=agents, k=k, portfolio=initial_portfolio
