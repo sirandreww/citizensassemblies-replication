@@ -121,9 +121,11 @@ def legacy_find(feature_info: Dict[FeatureCategory, Dict[Feature, FeatureInfo]],
         check_min_cat, new_output_lines = check_min_cats(cat_copy)
         if check_min_cat:
             return list(people_selected.keys())
+        else:
+            print("Rejected ", people_selected)
 
 
-def legacy_probabilities(instance: Instance, iterations: int, random_seed: int) -> ProbAllocation:
+def legacy_probabilities(instance: Instance, iterations: int, random_seed: int) -> tuple[ProbAllocation, set]:
     """Estimate the probability allocation for LEGACY by drawing `iterations` many random panels in a row."""
 
     categories = instance.categories
@@ -132,6 +134,7 @@ def legacy_probabilities(instance: Instance, iterations: int, random_seed: int) 
 
     seed(random_seed)
     np.random.seed(random_seed)
+    found_panels = set()
 
     for category in categories:
         assert sum(fv_info["min"] for fv_info in categories[category].values()) <= k
@@ -142,11 +145,16 @@ def legacy_probabilities(instance: Instance, iterations: int, random_seed: int) 
     for i in range(iterations):
         if (i + 1) % 100 == 0:
             print(f"Running iteration {i + 1} out of {iterations}.")
-        agent_appearance_counter.update(legacy_find(categories, agents, k))
-    return ProbAllocation({agent_id: agent_appearance_counter[agent_id] / iterations for agent_id in agents})
+        panel = legacy_find(categories, agents, k)
+        panel.sort()
+        found_panels.add(tuple(panel))
+        agent_appearance_counter.update(panel)
+    return ProbAllocation(
+        {agent_id: agent_appearance_counter[agent_id] / iterations for agent_id in agents}
+    ), found_panels
 
 
-def leximin_probabilities(instance: Instance) -> ProbAllocation:
+def leximin_probabilities(instance: Instance) -> Tuple[ProbAllocation, set]:
     """Compute the exact probability allocation for LEXIMIN."""
 
     categories = instance.categories
@@ -159,7 +167,7 @@ def leximin_probabilities(instance: Instance) -> ProbAllocation:
     for panel, probability in zip(portfolio, output_probs):
         for agent_id in panel:
             selection_probs[agent_id] += probability
-    return ProbAllocation(selection_probs)
+    return ProbAllocation(selection_probs), set(tuple(port) for port in portfolio)
 
 
 def compute_prob_allocation_stats(alloc: ProbAllocation, cap_for_geometric_mean: bool) -> ProbAllocationStats:
@@ -202,7 +210,7 @@ def upper_confidence_bound(num_trials: int, sample_proportion: float) -> float:
         return beta.ppf(.99, .5 + num_successes, .5 + num_failures)
 
 
-def run_legacy_or_retrieve(instance_name: str, instance: Instance, resample: bool) -> ProbAllocation:
+def run_legacy_or_retrieve(instance_name: str, instance: Instance, resample: bool) -> Tuple[ProbAllocation, set]:
     """Run the LEGACY algorithm or, if it has been run before, look up the result from disk. By setting `resample` to
     True, a second sample is taken with a different random seed.
     """
@@ -215,31 +223,56 @@ def run_legacy_or_retrieve(instance_name: str, instance: Instance, resample: boo
 
     if allocation_file.exists():
         with open(allocation_file, "rb") as file:
-            alloc = load(file)
+            (alloc, found_panels) = load(file)
     else:
-        alloc = legacy_probabilities(instance, 10000, random_seed=random_seed)
+        alloc, found_panels = legacy_probabilities(instance, 10000, random_seed=random_seed)
         with open(allocation_file, "wb") as file:
-            dump(alloc, file)
+            dump((alloc, found_panels), file)
 
     assert len(alloc) == len(instance.agents)
-    return alloc
+    return alloc, found_panels
 
 
-def run_leximin_or_retrieve(instance_name: str, instance: Instance) -> ProbAllocation:
+def run_leximin_or_retrieve(instance_name: str, instance: Instance) -> Tuple[ProbAllocation, set]:
     """Run the LEXIMIN algorithm or, if it has been run before, look up the result from disk."""
 
     allocation_file = Path("distributions", f"{instance_name}_{instance.k}_leximin.pickle")
 
     if allocation_file.exists():
         with open(allocation_file, "rb") as file:
-            alloc = load(file)
+            (alloc, found_panels) = load(file)
     else:
-        alloc = leximin_probabilities(instance)
+        alloc, found_panels = leximin_probabilities(instance)
         with open(allocation_file, "wb") as file:
-            dump(alloc, file)
+            dump((alloc, found_panels), file)
 
     assert len(alloc) == len(instance.agents)
-    return alloc
+    return alloc, found_panels
+
+
+def plot_number_of_panels_per_algorithm(instance_name: str, instance: Instance, algo_to_num_panels) -> Path:
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    # creating the dataset
+    data = algo_to_num_panels
+    courses = list(data.keys())
+    values = list(data.values())
+
+    fig = plt.figure(figsize=(10, 5))
+
+    # creating the bar plot
+    plt.bar(courses, values, color='maroon',
+            width=0.4)
+
+    plt.xlabel("Algorithm name")
+    plt.ylabel("No. of unique panels observed")
+    plt.title(f"Number of possible panels per algorithm for {instance_name}")
+
+    output_directory = Path("analysis")
+    plot_path = output_directory / f"{instance_name}_{instance.k}_number_of_unique_panels.pdf"
+    plt.savefig(plot_path)
+    return plot_path
 
 
 def plot_probability_allocations(instance_name: str, instance: Instance, legacy_alloc: ProbAllocation,
@@ -446,9 +479,9 @@ def plot_intersectional_representation(instance_name: str, instance: Instance, l
 def analyze_instance(instance_name: str, instance: Instance, skip_timing: bool = False):
     """Run a full analysis of LEGACY and LEXIMIN on a given instance."""
 
-    legacy_alloc_first_sample = run_legacy_or_retrieve(instance_name, instance, False)
-    legacy_alloc_second_sample = run_legacy_or_retrieve(instance_name, instance, True)
-    leximin_alloc = run_leximin_or_retrieve(instance_name, instance)
+    legacy_alloc_first_sample, unique_panels_legacy_1 = run_legacy_or_retrieve(instance_name, instance, False)
+    legacy_alloc_second_sample, unique_panels_legacy_2 = run_legacy_or_retrieve(instance_name, instance, True)
+    leximin_alloc, unique_panels_leximin = run_leximin_or_retrieve(instance_name, instance)
 
     k = instance.k
     n = len(instance.agents)
@@ -477,6 +510,13 @@ def analyze_instance(instance_name: str, instance: Instance, skip_timing: bool =
                                        f"calculated from sample proportion {first_minimizer_second_prob:.4f} and "
                                        f"sample size 10,000)")
     log("LEXIMIN minimum probability (exact):", f"{leximin_stats.min:.1%}")
+
+    log("LEGACY number of unique panels seen:", f"{len(unique_panels_legacy_2)}")
+    log("LEXIMIN number of unique panels possible:", f"{len(unique_panels_leximin)}")
+    plot_number_of_panels_per_algorithm(instance_name=instance_name, instance=instance, algo_to_num_panels={
+        "leximin": len(unique_panels_leximin),
+        "legacy": len(unique_panels_legacy_2)
+    })
 
     log("gini coefficient of LEGACY:", f"{legacy_stats.gini:.1%}")
     log("gini coefficient of LEXIMIN:", f"{leximin_stats.gini:.1%}")

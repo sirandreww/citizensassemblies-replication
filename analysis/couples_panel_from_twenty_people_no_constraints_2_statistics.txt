@@ -1,0 +1,17 @@
+instance:	couples_panel_from_twenty_people_no_constraints
+pool size n:	20
+panel size k:	2
+# quota categories:	1
+mean selection probability k/n:	10.0%
+LEGACY minimum probability:	≤ 10.92% (99% upper confidence bound based on Jeffreys interval for a binomial parameter, calculated from sample proportion 0.1020 and sample size 10,000)
+LEXIMIN minimum probability (exact):	10.0%
+LEGACY number of unique panels seen:	100
+LEXIMIN number of unique panels possible:	20
+gini coefficient of LEGACY:	1.8%
+gini coefficient of LEXIMIN:	0.0%
+geometric mean of LEGACY:	10.0%
+geometric mean of LEXIMIN:	10.0%
+share selected by LEGACY with probability below LEXIMIN minimum selection probability:	50.0%
+Plot of probability allocation created at analysis\couples_panel_from_twenty_people_no_constraints_2_prob_allocs.pdf.
+Plot of ratio products created at analysis\couples_panel_from_twenty_people_no_constraints_2_ratio_product.pdf.
+Skip timing.
