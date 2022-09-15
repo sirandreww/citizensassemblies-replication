@@ -30,6 +30,7 @@ from scipy.stats import beta
 from scipy.stats.mstats import gmean
 from legacy import find_random_sample_legacy, SelectionError, check_min_cats
 from leximin import find_distribution_leximin
+from xmin import find_distribution_xmin
 
 """
 ***********************************************************************************************************************
@@ -205,6 +206,24 @@ def leximin_probabilities(instance: Instance) -> Tuple[ProbAllocation, set, Pair
         for agent_id in panel:
             selection_probs[agent_id] += probability
     pair_histogram.add_portfolio_of_panels_to_histogram(portfolio=portfolio, probabilities=output_probs)
+    probable_panels = set(tuple(port) for i, port in enumerate(portfolio) if output_probs[i] > 0.00000000001)
+    return ProbAllocation(selection_probs), probable_panels, pair_histogram
+
+
+def xmin_probabilities(instance: Instance) -> Tuple[ProbAllocation, set, PairHistogram]:
+    """Compute the exact probability allocation for XMIN."""
+    categories = instance.categories
+    agents = instance.agents
+    k = instance.k
+    columns_data = {agent_id: {} for agent_id in agents}
+    pair_histogram = PairHistogram(len(agents))
+
+    portfolio, output_probs, output_lines = find_distribution_xmin(categories, agents, columns_data, k, False, [])
+    selection_probs = {agent_id: 0. for agent_id in agents}
+    for panel, probability in zip(portfolio, output_probs):
+        for agent_id in panel:
+            selection_probs[agent_id] += probability
+    pair_histogram.add_portfolio_of_panels_to_histogram(portfolio=portfolio, probabilities=output_probs)
 
     return ProbAllocation(selection_probs), set(tuple(port) for port in portfolio), pair_histogram
 
@@ -253,6 +272,8 @@ def run_legacy_or_retrieve(instance_name: str, instance: Instance, resample: boo
     """Run the LEGACY algorithm or, if it has been run before, look up the result from disk. By setting `resample` to
     True, a second sample is taken with a different random seed.
     """
+    # import time
+    # totally_random_seed = int(time.time() * 1000000) % (2 ** 32)
     if not resample:
         allocation_file = Path("distributions", f"{instance_name}_{instance.k}_legacy_first.pickle")
         random_seed = 0
@@ -265,6 +286,23 @@ def run_legacy_or_retrieve(instance_name: str, instance: Instance, resample: boo
             (alloc, found_panels, pair_histogram) = load(file)
     else:
         alloc, found_panels, pair_histogram = legacy_probabilities(instance, 10000, random_seed=random_seed)
+        with open(allocation_file, "wb") as file:
+            dump((alloc, found_panels, pair_histogram), file)
+
+    assert len(alloc) == len(instance.agents)
+    return alloc, found_panels, pair_histogram
+
+
+def run_xmin_or_retrieve(instance_name: str, instance: Instance) -> Tuple[ProbAllocation, set, PairHistogram]:
+    """Run the XMIN algorithm or, if it has been run before, look up the result from disk."""
+
+    allocation_file = Path("distributions", f"{instance_name}_{instance.k}_xmin.pickle")
+
+    if allocation_file.exists():
+        with open(allocation_file, "rb") as file:
+            (alloc, found_panels, pair_histogram) = load(file)
+    else:
+        alloc, found_panels, pair_histogram = xmin_probabilities(instance)
         with open(allocation_file, "wb") as file:
             dump((alloc, found_panels, pair_histogram), file)
 
@@ -551,12 +589,14 @@ def analyze_instance(instance_name: str, instance: Instance, skip_timing: bool =
         instance_name, instance, True
     )
     leximin_alloc, unique_panels_leximin, pair_histogram_leximin = run_leximin_or_retrieve(instance_name, instance)
+    xmin_alloc, unique_panels_xmin, pair_histogram_xmin = run_xmin_or_retrieve(instance_name, instance)
 
     k = instance.k
     n = len(instance.agents)
 
     legacy_stats = compute_prob_allocation_stats(legacy_alloc_first_sample, True)
     leximin_stats = compute_prob_allocation_stats(leximin_alloc, False)
+    xmin_stats = compute_prob_allocation_stats(xmin_alloc, False)
 
     analysis_log = open(Path("analysis", f"{instance_name}_{k}_statistics.txt"), "w", encoding="utf-8")
 
@@ -569,7 +609,7 @@ def analyze_instance(instance_name: str, instance: Instance, skip_timing: bool =
     log("panel size k:", k)
     log("# quota categories:", len(instance.categories))
     log("mean selection probability k/n:", f"{k / n:.1%}")
-
+    log("********************************************************************************")
     # select one agent least frequently selected in the first set of 10,000 randomly drawn panels
     legacy_first_minimizer = min(instance.agents.keys(), key=lambda agent_id: legacy_alloc_first_sample[agent_id])
     first_minimizer_second_prob = legacy_alloc_second_sample[legacy_first_minimizer]
@@ -579,23 +619,32 @@ def analyze_instance(instance_name: str, instance: Instance, skip_timing: bool =
                                        f"calculated from sample proportion {first_minimizer_second_prob:.4f} and "
                                        f"sample size 10,000)")
     log("LEXIMIN minimum probability (exact):", f"{leximin_stats.min:.1%}")
-
+    log("XMIN minimum probability (exact):", f"{xmin_stats.min:.1%}")
+    log("********************************************************************************")
     log("LEGACY number of unique panels seen:", f"{len(unique_panels_legacy_2)}")
     log("LEXIMIN number of unique panels possible:", f"{len(unique_panels_leximin)}")
+    log("XMIN number of unique panels possible:", f"{len(unique_panels_xmin)}")
     plot_number_of_panels_per_algorithm(instance_name=instance_name, instance=instance, algo_to_num_panels={
         "leximin": len(unique_panels_leximin),
-        "legacy": len(unique_panels_legacy_2)
+        "legacy": len(unique_panels_legacy_2),
+        # "xmin": len(unique_panels_xmin)
     })
     plot_pair_probability_distribution_per_algorithm(instance_name=instance_name, instance=instance, algo_to_pair_hist={
         "leximin": pair_histogram_leximin,
         "legacy": pair_histogram_legacy_2,
+        # "xmin": pair_histogram_xmin,
+        # "legacy1": pair_histogram_legacy_1,
         "uniform": PairHistogram(len(instance.agents), uniform_distribution=True)
     })
-
+    log("********************************************************************************")
     log("gini coefficient of LEGACY:", f"{legacy_stats.gini:.1%}")
     log("gini coefficient of LEXIMIN:", f"{leximin_stats.gini:.1%}")
+    log("gini coefficient of XMIN:", f"{xmin_stats.gini:.1%}")
+    log("********************************************************************************")
     log("geometric mean of LEGACY:", f"{legacy_stats.geometric_mean:.1%}")
     log("geometric mean of LEXIMIN:", f"{leximin_stats.geometric_mean:.1%}")
+    log("geometric mean of XMIN:", f"{leximin_stats.geometric_mean:.1%}")
+    log("********************************************************************************")
     share_below_leximin_min = sum(1 for p in legacy_alloc_first_sample.values() if p < leximin_stats.min) / n
     log("share selected by LEGACY with probability below LEXIMIN minimum selection probability:",
         f"{share_below_leximin_min:.1%}")
